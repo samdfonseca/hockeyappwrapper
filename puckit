@@ -90,10 +90,17 @@ def _versions(args):
 
 def _download(version, args):
     title = version['title'].replace(' ', '_').replace('(', '').replace(')', '')
+    downloadpath = args.downloadpath
     filename = '{0}-{1}.apk'.format(title, version['shortversion'])
-    filepath = os.path.join(args.downloadpath, filename)
-    if not os.path.exists(args.downloadpath):
-        fileutils.mkdir_p(args.downloadpath)
+    filepath = os.path.join(downloadpath, filename)
+    if downloadpath != '' and not os.path.exists(downloadpath):
+        try:
+            fileutils.mkdir_p(downloadpath)
+        except OSError:
+            downloadpath_old = downloadpath
+            downloadpath = os.getcwd()
+            print('Unable to create directory: {}'.format(downloadpath_old))
+            print('Downloading to current directory: {}'.format(downloadpath))
     if os.path.exists(filepath) and not args.overwrite:
         print('{0}File already exists.'.format(_c['Yellow']))
     else:
@@ -144,5 +151,5 @@ if __name__ == '__main__':
     elif args.command == 'install':
         app = _app(args)
         version = _version(args)
-        _install(args)
+        _install(app, version, args)
 
