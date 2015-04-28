@@ -1,0 +1,148 @@
+#!/usr/bin/env python
+
+from __future__ import print_function
+import os
+import argparse
+from pprint import pprint
+
+from boltons import fileutils
+
+from hockeyapp import api as hockeyapi
+from hockeyapp import utils as hockeyutils
+
+
+parser = argparse.ArgumentParser()
+parser.add_argument('command', default='search')
+parser.add_argument('-u', '--user', type=str, default='')
+parser.add_argument('-p', '--password', type=str, default='')
+parser.add_argument('-a', '--app', type=str)
+parser.add_argument('-v', '--version', type=str, default='')
+parser.add_argument('-d', '--downloadpath', type=str, default='')
+parser.add_argument('-f', '--overwrite', action='store_true', default=False)
+parser.add_argument('-s', '--device', type=str, default='')
+parser.add_argument('-l', '--latest', action='store_true', default=False)
+
+args = parser.parse_args()
+
+class TermColors(dict):
+    COLOR_TEMPLATES= (
+            ('Black', '0;30'),
+            ('Red', '0;31'),
+            ('Green', '0;32'),
+            ('Brown', '0;33'),
+            ('Blue', '0;34'),
+            ('Purple', '0;35'),
+            ('Cyan', '0;36'),
+            ('LightGray', '0;37'),
+            ('DarkGray', '0;30'),
+            ('LightRed', '1;31'),
+            ('LightGreen', '1;32'),
+            ('Yellow', '1;33'),
+            ('LightBlue', '1;34'),
+            ('LightPurple', '1;35'),
+            ('LightCyan', '1;36'),
+            ('White', '1;37'),
+            ('Normal', '0'),
+        )
+
+    NoColor = ''
+    _base = '\001\033[{}m\002'
+
+    def __init__(self):
+        if os.environ.get('TERM') in ('xterm-color', 'xterm-256color', 'linux', 'screen',
+                'screen-256color', 'screen-bce'):
+            self.update(dict([(k, self._base.format(v)) for k, v in self.COLOR_TEMPLATES]))
+        else:
+            self.update(dict([(k, self.NoColor) for k, v in self.COLOR_TEMPLATES]))
+
+_c = TermColors()
+_separator_line = '{0}{1}{2}'.format(_c['Blue'], '='*60, _c['Normal'])
+
+
+token = None
+if args.user is not '' and args.password is not '':
+    all_tokens = hockeyapi.auth_tokens(args.user, args.password)
+    tokens = filter(lambda t: t['rights'] == 0, all_tokens['tokens'])
+    if tokens:
+        token = tokens[0]
+
+def _app(args):
+    key, value = args.app.split(':')
+    app = hockeyutils.get_app_by(key, value)
+    return app
+
+def _apps(args):
+    key, value = args.app.split(':')
+    all_apps = hockeyapi.apps(token)['apps']
+    apps = filter(lambda a: a[key].startswith(value), all_apps)
+    return apps
+
+def _version(args):
+    app = _app(args)
+    version = hockeyutils.get_version(app['public_identifier'], args.version)
+    return version
+
+def _versions(args):
+    app = _app(args)
+    app_versions = hockeyapi.versions(app['public_identifier'], token)['app_versions']
+    versions = filter(lambda v: v['shortversion'].startswith(args.version), app_versions)
+    return versions
+
+def _download(version, args):
+    title = version['title'].replace(' ', '_').replace('(', '').replace(')', '')
+    filename = '{0}-{1}.apk'.format(title, version['shortversion'])
+    filepath = os.path.join(args.downloadpath, filename)
+    if not os.path.exists(args.downloadpath):
+        fileutils.mkdir_p(args.downloadpath)
+    if os.path.exists(filepath) and not args.overwrite:
+        print('{0}File already exists.'.format(_c['Yellow']))
+    else:
+        print('{0}Downloading App: {1}{2}, {3}Version: {4}{5}'.format(_c['Green'], _c['Normal'], version['title'],
+            _c['LightGreen'], _c['Normal'], version['shortversion']))
+        hockeyapi.download_apk(filepath, version['download_url'])
+    print('{0}Location: {1}{2}'.format(_c['Green'], _c['Normal'], filepath))
+    return filepath
+
+def _install(app, version, args):
+    apk = _download(version, args)
+    adb_command = 'adb install '
+    if args.device != '':
+        adb_command += '-s {0} '.format(args.device)
+    adb_command += apk
+    os.system('adb uninstall {0}'.format(app['bundle_identifier']))
+    os.system(adb_command)
+    os.remove(apk)
+
+
+if __name__ == '__main__':
+    if args.command == 'app':
+        app = _app(args)
+        pprint(app)
+    elif args.command == 'apps':
+        apps = _apps(args)
+        for app in apps:
+            print(_separator_line)
+            pprint(app)
+        print(_separator_line)
+    elif args.command == 'version':
+        app = _app(args)
+        version = _version(args)
+        pprint(version)
+    elif args.command == 'versions':
+        app = _app(args)
+        versions = _versions(args)
+        for version in versions:
+            print(_separator_line)
+            pprint(version)
+        print(_separator_line)
+    elif args.command == 'download':
+        versions = [_version(args)] if args.latest else _versions(args)
+        for version in versions:
+            print(_separator_line)
+            _download(version, args)
+        print(_separator_line)
+    elif args.command == 'install':
+        app = _app(args)
+        version = _version(args)
+        _install(args)
+
