@@ -1,9 +1,10 @@
+import re
 from hockeyapp import api as hockeyapi
 
 
 def get_apps_by(app_property, value):
     apps = hockeyapi.apps()
-    filtered_apps = filter(lambda app: app[app_property] == value, apps['apps'])
+    filtered_apps = filter(lambda app: re.match(value, app[app_property]), apps['apps'])
     return filtered_apps
 
 def get_app_by(app_property, value):
