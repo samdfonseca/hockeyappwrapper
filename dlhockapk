@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 from __future__ import print_function
+import re
 import os
 import argparse
 from pprint import pprint
@@ -15,12 +16,14 @@ parser = argparse.ArgumentParser()
 parser.add_argument('command', default='search')
 parser.add_argument('-u', '--user', type=str, default='')
 parser.add_argument('-p', '--password', type=str, default='')
-parser.add_argument('-a', '--app', type=str)
+parser.add_argument('-a', '--app', nargs=2, type=str)
 parser.add_argument('-v', '--version', type=str, default='')
 parser.add_argument('-d', '--downloadpath', type=str, default='')
 parser.add_argument('-f', '--overwrite', action='store_true', default=False)
 parser.add_argument('-s', '--device', type=str, default='')
 parser.add_argument('-l', '--latest', action='store_true', default=False)
+parser.add_argument('-r', '--reinstall', action='store_true', default=False)
+parser.add_argument('--package', type=str, default='')
 
 args = parser.parse_args()
 
@@ -67,14 +70,25 @@ if args.user is not '' and args.password is not '':
         token = tokens[0]
 
 def _app(args):
-    key, value = args.app.split(':')
+    if args.package != '':
+        key = 'bundle_identifier'
+        value = '.*{0}$'.format(args.package)
+    else:
+        key = args.app[0]
+        value = '.*{0}$'.format(args.app[1])
     app = hockeyutils.get_app_by(key, value)
     return app
 
 def _apps(args):
-    key, value = args.app.split(':')
-    all_apps = hockeyapi.apps(token)['apps']
-    apps = filter(lambda a: a[key].startswith(value), all_apps)
+    if args.package != '':
+        key = 'bundle_identifier'
+        value = '.*{0}'.format(args.package)
+    else:
+        key = args.app[0]
+        value = '.*{0}'.format(args.app[1])
+    # all_apps = hockeyapi.apps(token)['apps']
+    apps = hockeyutils.get_apps_by(key, value)
+    # apps = filter(lambda a: a[key].startswith(value), all_apps)
     return apps
 
 def _version(args):
@@ -110,14 +124,30 @@ def _download(version, args):
     print('{0}Location: {1}{2}'.format(_c['Green'], _c['Normal'], filepath))
     return filepath
 
+def _uninstall(app, args):
+    device = '-s {0} '.format(args.device) if args.device != '' else ''
+    package = app['bundle_identifier']
+    adb_uninstall_command = 'adb {0}uninstall {1}'.format(device, package)
+    adb_list_packages_command = 'adb {0}shell pm list packages | awk "/{1}\r/"'.format(device, package)
+    matching_installed_packages = os.popen(adb_list_packages_command).readline()
+    if matching_installed_packages:
+        print('{red}Found app with matching package name: {normal}{package}'.format(red=_c['Red'], normal=_c['Normal'], package=package))
+        print('{green}Uninstalling...{normal}'.format(green=_c['Green'], normal=_c['Normal']))
+        print(adb_uninstall_command)
+        os.system(adb_uninstall_command)
+
 def _install(app, version, args):
     apk = _download(version, args)
-    adb_command = 'adb install '
-    if args.device != '':
-        adb_command += '-s {0} '.format(args.device)
-    adb_command += apk
-    os.system('adb uninstall {0}'.format(app['bundle_identifier']))
-    os.system(adb_command)
+    device = '-s {0} '.format(args.device) if args.device != '' else ''
+    package = app['bundle_identifier']
+    adb_install_command = 'adb {0}install {1}'.format(device, apk)
+
+    if args.reinstall:
+        _uninstall(app, args)
+
+    print('{green}Installing...{normal}'.format(green=_c['Green'], normal=_c['Normal']))
+    print(adb_install_command)
+    os.system(adb_install_command)
     os.remove(apk)
 
 
@@ -152,4 +182,7 @@ if __name__ == '__main__':
         app = _app(args)
         version = _version(args)
         _install(app, version, args)
+    elif args.command == 'uninstall':
+        app = _app(args)
+        _uninstall(app, args)
 
