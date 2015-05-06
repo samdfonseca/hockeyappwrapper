@@ -120,7 +120,7 @@ def _download(version, args):
     else:
         print('{0}Downloading App: {1}{2}, {3}Version: {4}{5}'.format(_c['Green'], _c['Normal'], version['title'],
             _c['LightGreen'], _c['Normal'], version['shortversion']))
-        hockeyapi.download_apk(filepath, version['download_url'])
+        hockeyapi.download_apk(filepath, version)
     print('{0}Location: {1}{2}'.format(_c['Green'], _c['Normal'], filepath))
     return filepath
 

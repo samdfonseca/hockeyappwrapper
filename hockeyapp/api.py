@@ -72,13 +72,14 @@ def versions(app_id, token=None):
     resp = hockey_get(api_method, token=token)
     return loads(resp.content)
 
-def download_apk(destination_file, download_url):
+def download_apk(destination_file, version):
     """Downloads an APK file from the given download_url and writes it to the destination_file.
 
     :param destination_file: The path to download the file to as a string.
     :param download_url: The url to download the APK file from as a string.
     :return: The absolute path to the downloaded file.
     """
+    download_url = version['download_url']
     download_url = download_url.replace('apps', 'api/2/apps') if download_url.find('api/2/apps') == -1 else download_url
     path = abspath(destination_file) if not destination_file.startswith('/') else destination_file
     resp = get(download_url)
